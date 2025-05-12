@@ -1,8 +1,6 @@
 <?php
-// Bağlantı dosyasını dahil et
-
 // Bağlantı ayarları
-$host = "localhost"; 
+$host = "localhost:3306"; 
 $dbname = "dental_db"; 
 $user = "root"; 
 $pass = ""; 
@@ -18,105 +16,127 @@ try {
     die();
 }
 
-
-
-// Veritabanı bağlantısını doğru şekilde aldığınızı varsayıyoruz
-// Artık tekrar PDO bağlantısını yapmanıza gerek yok.
-
 // URL üzerinden gelen kullanıcı ID'sini al
 $userId = isset($_GET['user_id']) ? $_GET['user_id'] : null;
 
+// Hastalar listesini çek
+$stmt = $pdo->prepare("SELECT id, name FROM users ORDER BY name");
+$stmt->execute();
+$users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-
-// Eğer user_id parametresi gelmediyse, hata mesajı göster
-if ($userId === null) {
-    echo "No user ID provided.";
-    exit; // Kodun geri kalanı çalışmasın
+// Eğer user_id seçilmediyse ve hastalar varsa ilk hastayı varsayılan olarak kullan
+if ($userId === null && count($users) > 0) {
+    $userId = $users[0]['id'];
 }
 
-try {
-    // PDO sorgusu ile verileri alıyoruz
-  $stmt = $pdo->prepare("SELECT name, image FROM users WHERE id = :user_id");
-$stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+// Kullanıcı bilgilerini çek
+if ($userId) {
+    try {
+        // Kullanıcı bilgilerini çek
+        $stmt = $pdo->prepare("SELECT name, image FROM users WHERE id = :user_id");
+        $stmt->bindParam(':user_id', $userId, PDO::PARAM_STR);
+        $stmt->execute();
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-$stmt->execute();
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    // Verileri çek
-    $procedures = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Eğer veriler bulunamazsa
-    // if (empty($procedures)) {
-    //     echo "No procedures found for this user.";
-    // } else {
-    //     // Verileri tablo olarak ekrana yazdır
-    //     echo "<table border='1'>";
-    //     echo "<tr><th>ID</th><th>Treatment</th><th>Doctor</th><th>Date</th><th>Cost</th></tr>";
-
-    //     foreach ($procedures as $procedure) {
-    //         echo "<tr>";
-    //         echo "<td>" . $procedure['id'] . "</td>";
-    //         echo "<td>" . $procedure['yapilan_islem'] . "</td>";
-    //         echo "<td>" . $procedure['doktor_ad'] . "</td>";
-    //         echo "<td>" . $procedure['islem_tarihi'] . "</td>";
-    //         echo "<td>" . $procedure['ucret'] . "</td>";
-    //         echo "</tr>";
-    //     }
-
-    //     echo "</table>";
-    // }
-} catch (PDOException $e) {
-    // Eğer hata oluşursa, hata mesajını ekrana yazdır
-    echo "Error: " . $e->getMessage();
+        // Bu kullanıcıya ait işlemleri çek
+        if ($user) {
+            $stmt = $pdo->prepare("
+                SELECT 
+                    yi.islem_id, 
+                    yi.dis_id,
+                    yi.yapilan_islem, 
+                    yi.doktor_ad, 
+                    yi.islem_tarihi, 
+                    yi.ucret
+                FROM 
+                    yapilan_islem yi
+                WHERE 
+                    yi.user_id = :user_id
+                ORDER BY 
+                    yi.islem_tarihi DESC
+            ");
+            $stmt->bindParam(':user_id', $userId, PDO::PARAM_STR);
+            $stmt->execute();
+            $procedures = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (PDOException $e) {
+        echo "Error: " . $e->getMessage();
+        $procedures = [];
+        $user = null;
+    }
 }
-
-$user_id = $_GET['user_id'];
-
-
-
-// Kullanıcının bilgilerini alıyoruz
-$stmt = $pdo->prepare("SELECT * FROM yapilan_islem WHERE user_id = :user_id");
-$stmt->bindParam(':user_id', $user_id); // Tip belirtme, varsayılan string
- // Burada $user_id kullanıyoruz
-$stmt->execute();
-$procedures = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-
 ?>
 
-
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="tr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Document</title>
-  <style>
-
-    body{
-         background-image: url('../image/arka_plan.png');
-
-    }
-    svg {
-      border: 1px solid #ccc;
-    }
-
-    .input-popup {
-      position: absolute;
-      display: none;
-      z-index: 100;
-    }
-  </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hasta İşlemleri</title>
+    <style>
+        body {
+            background-image: url('../image/arka_plan.png');
+            font-family: Arial, sans-serif;
+        }
+        
+        svg {
+            border: 1px solid #ccc;
+        }
+        
+        .input-popup {
+            position: absolute;
+            display: none;
+            z-index: 100;
+        }
+        
+        .user-selector {
+            background-color: white;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .user-selector select {
+            padding: 8px;
+            width: 100%;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        
+        .patient-records-container {
+            margin-top: 40px;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Diğer CSS stilleri... */
+    </style>
 </head>
 
 <body>
+    <!-- Hasta Seçme Formu -->
+    <div class="user-selector">
+        <h2>Hasta Seçin</h2>
+        <form method="GET" action="">
+            <select name="user_id" onchange="this.form.submit()">
+                <option value="">-- Hasta Seçin --</option>
+                <?php foreach ($users as $user_item): ?>
+                    <option value="<?= htmlspecialchars($user_item['id']) ?>" <?= ($userId == $user_item['id']) ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($user_item['name']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </form>
+    </div>
 
-
-  <div class="header-container">
-    <h2>Diş Haritası</h2>
-    <p class="instructions">Lütfen işlem yapılacak dişi seçiniz.</p>
-  </div>
+    <div class="header-container">
+        <h2>Diş Haritası</h2>
+        <p class="instructions">Lütfen işlem yapılacak dişi seçiniz.</p>
+    </div>
+    
   <svg
     id="svg"
     width="268"
@@ -371,926 +391,1095 @@ $procedures = $stmt->fetchAll(PDO::FETCH_ASSOC);
       stroke="#000"
       fill="#fff" />
   </svg>
-  <textarea
-    id="popupInput"
-    class="input-popup"
-    rows="3"
-    cols="20"
-    placeholder="Not girin...">
-  </textarea>
-  <div class="procedures-container">
-    <h3>Yapılan İşlemler Listesi</h3>
-    <div class="procedures-list" id="proceduresList">
-      <!-- İşlemler burada listelenecek -->
-      <p class="no-procedures">Henüz bir işlem kaydedilmedi.</p>
-    </div>
-  </div>
-
-  <!-- Tabloyu gösterecek HTML yapısı -->
-  <div class="patient-records-container">
-    <h3>Geçmiş İşlem Kayıtları</h3>
     
-<?php if ($user): ?>
-    <div style="display: flex; align-items: center; margin-bottom: 20px;">
-        <!-- Kullanıcı resmi -->
-        <img src="../uploaded_files/<?= htmlspecialchars($user['image']); ?>" class="image" style="width: 120px; border-radius: 10px;">
-        
-        <!-- Kullanıcı ismi ve soyismi -->
-        <h3><?php echo htmlspecialchars($user['name'])?></h3>
-    </div>
-<?php else: ?>
-    <p>Hasta bilgisi bulunamadı.</p>
-<?php endif; ?>
-
-
-    <div class="table-container">
-      <!-- Tabloyu oluşturuyoruz -->
-<table border="1">
-    <thead>
-        <tr>
-            <th>İşlem ID</th>
-            <th>Diş ID</th>
-            <th>Yapılan İşlem</th>
-            <th>Doktor Adı</th>
-            <th>İşlem Tarihi</th>
-            <th>Ücret</th>
-        </tr>
-    </thead>
-    <tbody>
-        <?php
-        // Verileri tabloya yazdırıyoruz
-        if ($procedures) {
-            foreach ($procedures as $procedure) {
-                echo "<tr>";
-                echo "<td>" . $procedure['islem_id'] . "</td>";
-                echo "<td>" . $procedure['dis_id'] . "</td>";
-                echo "<td>" . $procedure['yapilan_islem'] . "</td>";
-                echo "<td>" . $procedure['doktor_ad'] . "</td>";
-                echo "<td>" . $procedure['islem_tarihi'] . "</td>";
-                echo "<td>" . $procedure['ucret'] . "</td>";
-                echo "</tr>";
-            }
-        } else {
-            echo "<tr><td colspan='6'>Veri bulunamadı.</td></tr>";
-        }
-        ?>
-    </tbody>
-</table>
-    </div>
-  </div>
-
-  <!-- Tablo için CSS stilleri -->
-  <style>
-    table {
-    width: 90%;
-    margin: 30px auto;
-    border-collapse: separate;
-    border-spacing: 0;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    border-radius: 10px;
-    overflow: hidden;
-    font-size: 14px;
-}
-
-/* Tablo başlığı */
-th {
-    background-color: #007BFF;
-    color: white;
-    padding: 10px 12px;
-    text-align: center;
-    border-bottom: 2px solid #0056b3;
-    font-size: 15px;
-}
-
-/* Hücreler */
-td {
-    padding: 10px 12px;
-    text-align: center;
-    border-bottom: 1.5px solid #cce0ff;
-    color: #333;
-}
-
-/* Hover efekti */
-tr:hover {
-    background-color: #eaf3ff;
-}
-
-/* Alternatif satırlar */
-tr:nth-child(even) {
-    background-color: #f7faff;
-}
-
-/* Border radius etkisi için sadece üst ve alt satır köşeleri */
-table thead tr:first-child th:first-child {
-    border-top-left-radius: 10px;
-}
-table thead tr:first-child th:last-child {
-    border-top-right-radius: 10px;
-}
-table tbody tr:last-child td:first-child {
-    border-bottom-left-radius: 10px;
-}
-table tbody tr:last-child td:last-child {
-    border-bottom-right-radius: 10px;
-}
-
-/* Veri bulunamadı */
-td[colspan="6"] {
-    color: #dc3545;
-    font-weight: bold;
-    font-size: 1.05em;
-    background-color: #fff5f5;
-}
-
-    .patient-records-container {
-      margin-top: 40px;
-      padding: 20px;
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-    }
-
-    .patient-records-container h3 {
-      color: #0066cc;
-      margin-top: 0;
-      margin-bottom: 20px;
-      border-bottom: 2px solid #99c2ff;
-      padding-bottom: 10px;
-    }
-
-    .patient-info {
-      display: flex;
-      align-items: center;
-      margin-bottom: 20px;
-      background: linear-gradient(145deg, #f0f7ff, #e6f0ff);
-      padding: 15px;
-      border-radius: 8px;
-    }
-
-    .patient-photo {
-      margin-right: 20px;
-    }
-
-    .patient-photo img {
-      border-radius: 50%;
-      border: 3px solid #0066cc;
-      width: 80px;
-      height: 80px;
-      object-fit: cover;
-    }
-
-    .patient-details h4 {
-      margin: 0 0 10px 0;
-      color: #0066cc;
-      font-size: 18px;
-    }
-
-    .patient-details p {
-      margin: 5px 0;
-      color: #555;
-      font-size: 14px;
-    }
-
-    .table-container {
-      overflow-x: auto;
-    }
-
-    .records-table {
-      width: 100%;
-      border-collapse: collapse;
-      background-color: white;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      border-radius: 5px;
-      overflow: hidden;
-    }
-
-    .records-table thead {
-      background-color: #0066cc;
-      color: white;
-    }
-
-    .records-table th {
-      padding: 12px 15px;
-      text-align: left;
-      font-weight: 600;
-    }
-
-    .records-table tbody tr {
-      border-bottom: 1px solid #dddddd;
-      transition: all 0.3s ease;
-    }
-
-    .records-table tbody tr:nth-of-type(even) {
-      background-color: #f8f9fa;
-    }
-
-    .records-table tbody tr:hover {
-      background-color: #f0f7ff;
-    }
-
-    .records-table td {
-      padding: 12px 15px;
-    }
-
-    .action-button {
-      display: inline-block;
-      background: #0066cc;
-      color: white;
-      padding: 6px 12px;
-      border-radius: 4px;
-      text-decoration: none;
-      font-size: 14px;
-      font-weight: 500;
-      transition: all 0.3s ease;
-    }
-
-    .action-button:hover {
-      background: #0055aa;
-      transform: translateY(-2px);
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-    }
-  </style>
-  <script>
-    document.addEventListener("DOMContentLoaded", function() {
-      // Kaydedilen notları tutmak için
-      let savedNotes = {};
-      const svg = document.getElementById("svg");
-      const inputBox = document.getElementById("popupInput");
-      let selectedTooth = null;
-      let pulseElement = null;
-
-      // Artırılmış inputBox UI'ını oluştur
-      function enhanceInputBox() {
-        // Ana container oluştur
-        const container = document.createElement("div");
-        container.id = "toothNoteContainer";
-        container.className = "input-popup";
-
-        // Diş info kısmı
-        const toothInfo = document.createElement("div");
-        toothInfo.className = "tooth-info";
-        container.appendChild(toothInfo);
-
-        // Textarea
-        const textarea = document.createElement("textarea");
-        textarea.rows = 3;
-        textarea.cols = 25;
-        textarea.placeholder = "Bu diş için notlarınızı girin...";
-        container.appendChild(textarea);
-
-        // Kaydet butonu
-        const saveButton = document.createElement("button");
-        saveButton.className = "save-button";
-        saveButton.textContent = "Kaydet";
-        container.appendChild(saveButton);
-
-        // Pulse background elementi
-        pulseElement = document.createElement("div");
-        pulseElement.className = "pulse-bg";
-        document.body.appendChild(pulseElement);
-
-        // Mevcut textareayı değiştir
-        inputBox.parentNode.replaceChild(container, inputBox);
-        return {
-          container,
-          textarea,
-          toothInfo,
-          saveButton
-        };
-      }
-
-      const {
-        container: enhancedInputBox,
-        textarea,
-        toothInfo,
-        saveButton,
-      } = enhanceInputBox();
-
-      // Diş efektlerini ekle
-      function addToothEffects(tooth) {
-        // Temizle
-        clearToothEffects();
-
-        // Hover efekti
-        tooth.classList.add("selected-tooth");
-        selectedTooth = tooth;
-
-        // Parlama oluştur
-        const highlight = document.createElement("div");
-        highlight.className = "tooth-highlight";
-        svg.appendChild(highlight);
-
-        // Puls arka planı
-        const rect = tooth.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-
-        pulseElement.style.left = `${centerX}px`;
-        pulseElement.style.top = `${centerY}px`;
-        pulseElement.style.display = "block";
-      }
-
-      // Tüm efektleri temizle
-      function clearToothEffects() {
-        if (selectedTooth) {
-          selectedTooth.classList.remove("selected-tooth");
-          selectedTooth = null;
-        }
-
-        // Parlama efektini temizle
-        const highlights = document.querySelectorAll(".tooth-highlight");
-        highlights.forEach((h) => h.remove());
-
-        // Pulse efektini gizle
-        pulseElement.style.display = "none";
-      }
-
-      // Tüm path elementlerine event listener eklemek için
-      svg.addEventListener("click", function(e) {
-        // Tıklanan elementi veya parent path'i bul
-        let targetElement = e.target;
-        while (targetElement && targetElement !== svg) {
-          if (targetElement.tagName.toLowerCase() === "path") {
-            const id = targetElement.getAttribute("id");
-
-            // Dişi görsel olarak vurgula ve efektler ekle
-            addToothEffects(targetElement);
-
-            // Rect pozisyonunu al ve popup'ı konumlandır
-            const rect = targetElement.getBoundingClientRect();
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top - 40; // Dişin daha yukarısında göster
-
-            // Diş bilgisini güncelle
-            toothInfo.textContent = `Diş #${id} için Not`;
-
-            // Popup'ı konumlandır
-            enhancedInputBox.style.left = centerX + "px";
-            enhancedInputBox.style.top = centerY + "px";
-            enhancedInputBox.style.display = "block";
-
-            // Animasyon için bir sonraki frame'i bekle
-            setTimeout(() => {
-              enhancedInputBox.classList.add("active");
-            }, 10);
-
-            textarea.focus();
-            enhancedInputBox.dataset.toothId = id;
-            break;
-          }
-          targetElement = targetElement.parentElement;
-        }
-      });
-
-      // Doküman içinde başka bir yere tıklandığında popup'ı kapat
-      document.addEventListener("click", function(e) {
-        if (!enhancedInputBox.contains(e.target) && !svg.contains(e.target)) {
-          enhancedInputBox.classList.remove("active");
-
-          // Animasyon bittikten sonra gizleme
-          setTimeout(() => {
-            enhancedInputBox.style.display = "none";
-            clearToothEffects();
-          }, 400);
-
-          textarea.value = "";
-        }
-      });
-
-      // Not kaydetme fonksiyonu
-      function saveToothNote() {
-        const toothId = enhancedInputBox.dataset.toothId;
-        const note = textarea.value.trim();
-
-        if (note) {
-          console.log("Diş #" + toothId + " için not: " + note);
-
-          // Notu kaydet
-          savedNotes[toothId] = note;
-
-          // Dişi sarı olarak işaretle
-          if (selectedTooth) {
-            // Önce pop efektini kaldır, sonra sarı renge boya
-            selectedTooth.classList.remove("selected-tooth");
-            selectedTooth.classList.add("saved-tooth");
-          }
-
-          // Kapanış animasyonu
-          enhancedInputBox.classList.add("saved");
-          setTimeout(() => {
-            enhancedInputBox.classList.remove("active", "saved");
-          }, 300);
-
-          setTimeout(() => {
-            enhancedInputBox.style.display = "none";
-            clearToothEffects();
-            textarea.value = "";
-            // İşlem listesini güncelle
-            updateProceduresList();
-          }, 700);
-        }
-      }
-
-      // Kaydet butonuna tıklandığında
-      saveButton.addEventListener("click", function() {
-        saveToothNote();
-      });
-
-      // Enter tuşuna basıldığında notu kaydet ve kapat
-      textarea.addEventListener("keydown", function(e) {
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault();
-          saveToothNote();
-        }
-      });
-
-      // İşlem listesini güncelleyen fonksiyon
-      function updateProceduresList() {
-        const proceduresList = document.getElementById("proceduresList");
-
-        // Listeyi temizle
-        proceduresList.innerHTML = "";
-
-        // Kaydedilen notları kontrol et
-        const hasNotes = Object.keys(savedNotes).length > 0;
-
-        if (!hasNotes) {
-          const noProc = document.createElement("p");
-          noProc.className = "no-procedures";
-          noProc.textContent = "Henüz bir işlem kaydedilmedi.";
-          proceduresList.appendChild(noProc);
-          return;
-        }
-
-        // Her kayıtlı not için bir satır ekle
-        for (const toothId in savedNotes) {
-          const procedureItem = document.createElement("div");
-          procedureItem.className = "procedure-item";
-
-          const toothNumber = document.createElement("span");
-          toothNumber.className = "tooth-number";
-          toothNumber.textContent = `Diş #${toothId}:`;
-
-          const procedureDesc = document.createElement("span");
-          procedureDesc.className = "procedure-desc";
-          procedureDesc.textContent = savedNotes[toothId];
-
-          procedureItem.appendChild(toothNumber);
-          procedureItem.appendChild(procedureDesc);
-          proceduresList.appendChild(procedureItem);
-        }
-      }
-    });
-  </script>
-
-  <style>
-    /* Ana stil dosyası */
-    .selected-tooth {
-      transform-origin: center;
-      animation: toothPop 0.5s forwards;
-      filter: drop-shadow(0 10px 15px rgba(0, 0, 0, 0.7));
-      z-index: 100;
-    }
-
-    @keyframes toothPop {
-      0% {
-        transform: translateY(0) scale(1) rotate(0deg);
-        fill: #fff;
-      }
-
-      20% {
-        transform: translateY(-25px) scale(1.15) rotate(-2deg);
-        fill: #e6f7ff;
-      }
-
-      40% {
-        transform: translateY(-35px) scale(1.2) rotate(2deg);
-        fill: #b3e0ff;
-      }
-
-      60% {
-        transform: translateY(-30px) scale(1.18) rotate(-1deg);
-        fill: #99d6ff;
-      }
-
-      80% {
-        transform: translateY(-25px) scale(1.15) rotate(1deg);
-        fill: #80ccff;
-      }
-
-      100% {
-        transform: translateY(-20px) scale(1.12) rotate(0deg);
-        fill: #66c2ff;
-      }
-    }
-
-    /* Parlama efekti için */
-    .tooth-highlight {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      top: 0;
-      left: 0;
-      background: radial-gradient(circle at 30% 30%,
-          rgba(255, 255, 255, 0.8) 0%,
-          rgba(255, 255, 255, 0) 70%);
-      opacity: 0;
-      animation: highlight 1s forwards;
-      pointer-events: none;
-    }
-
-    @keyframes highlight {
-      0% {
-        opacity: 0;
-      }
-
-      50% {
-        opacity: 1;
-      }
-
-      100% {
-        opacity: 0.7;
-      }
-    }
-
-    /* Butonlar için stil */
-    .input-popup {
-      position: absolute;
-      display: none;
-      z-index: 200;
-      border: none;
-      border-radius: 10px;
-      padding: 15px;
-      background: linear-gradient(145deg, #f0f7ff, #e6f0ff);
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2),
-        0 5px 10px rgba(0, 0, 0, 0.1), inset 0 -5px 10px rgba(0, 0, 0, 0.05),
-        inset 0 5px 10px rgba(255, 255, 255, 0.2);
-      min-width: 200px;
-      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      backdrop-filter: blur(5px);
-      transform: translate(-50%, -120%) scale(0.8);
-      opacity: 0;
-    }
-
-    .input-popup.active {
-      transform: translate(-50%, -120%) scale(1);
-      opacity: 1;
-    }
-
-    .input-popup textarea {
-      width: 100%;
-      border: 1px solid #99c2ff;
-      border-radius: 5px;
-      padding: 8px;
-      background-color: rgba(255, 255, 255, 0.9);
-      resize: none;
-      font-family: "Arial", sans-serif;
-      margin-bottom: 10px;
-      box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.1);
-      transition: border 0.3s ease;
-    }
-
-    .input-popup textarea:focus {
-      outline: none;
-      border-color: #3399ff;
-      box-shadow: 0 0 0 3px rgba(51, 153, 255, 0.25),
-        inset 0 2px 5px rgba(0, 0, 0, 0.1);
-    }
-
-    .tooth-info {
-      text-align: center;
-      font-weight: bold;
-      color: #0066cc;
-      margin-bottom: 8px;
-      text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
-      font-size: 14px;
-    }
-
-    /* Pulsing background effect for selected tooth area */
-    .pulse-bg {
-      position: absolute;
-      border-radius: 50%;
-      background: radial-gradient(circle,
-          rgba(102, 204, 255, 0.3) 0%,
-          rgba(102, 204, 255, 0) 70%);
-      animation: pulse 2s infinite;
-      width: 100px;
-      height: 100px;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      z-index: 50;
-    }
-
-    @keyframes pulse {
-      0% {
-        transform: translate(-50%, -50%) scale(0.8);
-        opacity: 0.7;
-      }
-
-      50% {
-        transform: translate(-50%, -50%) scale(1.2);
-        opacity: 0.3;
-      }
-
-      100% {
-        transform: translate(-50%, -50%) scale(0.8);
-        opacity: 0.7;
-      }
-    }
-
-    /* Header stili */
-    .header-container {
-      text-align: center;
-      margin-bottom: 20px;
-      background: linear-gradient(145deg, #f0f7ff, #e6f0ff);
-      padding: 15px;
-      border-radius: 8px;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-    }
-
-    .header-container h2 {
-      margin: 0 0 10px 0;
-      color: #0066cc;
-    }
-
-    .instructions {
-      color: #666;
-      margin: 0;
-    }
-
-    /* Sarı renkli işaretlenmiş diş */
-    .saved-tooth {
-      fill: #ffeb3b !important;
-      /* Sarı */
-      filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.3));
-    }
-
-    /* Kaydet butonu */
-    .save-button {
-      display: block;
-      width: 100%;
-      padding: 8px;
-      background: #0066cc;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      font-weight: bold;
-      transition: all 0.3s ease;
-      margin-top: 10px;
-    }
-
-    .save-button:hover {
-      background: #0055aa;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    }
-
-    .save-button:active {
-      transform: translateY(0);
-    }
-
-    /* İşlemler listesi */
-    .procedures-container {
-      margin-top: 40px;
-      padding: 20px;
-      background: linear-gradient(145deg, #f0f7ff, #e6f0ff);
-      border-radius: 8px;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-    }
-
-    .procedures-container h3 {
-      color: #0066cc;
-      margin-top: 0;
-      border-bottom: 2px solid #99c2ff;
-      padding-bottom: 10px;
-    }
-
-    .procedures-list {
-      margin-bottom: 20px;
-    }
-
-    .procedure-item {
-      padding: 10px;
-      border-bottom: 1px solid #e0e0e0;
-      display: flex;
-      align-items: center;
-    }
-
-    .procedure-item:last-child {
-      border-bottom: none;
-    }
-
-    .tooth-number {
-      font-weight: bold;
-      color: #0066cc;
-      margin-right: 10px;
-      width: 80px;
-    }
-
-    .procedure-desc {
-      flex: 1;
-      color: #333;
-    }
-
-    .no-procedures {
-      color: #888;
-      font-style: italic;
-      text-align: center;
-      padding: 20px;
-    }
-
-    .detail-button {
-      display: inline-block;
-      background: #0066cc;
-      color: white;
-      padding: 10px 20px;
-      border-radius: 5px;
-      text-decoration: none;
-      font-weight: bold;
-      transition: all 0.3s ease;
-    }
-
-    .detail-button:hover {
-      background: #0055aa;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    }
+    <textarea
+        id="popupInput"
+        class="input-popup"
+        rows="3"
+        cols="20"
+        placeholder="Not girin...">
+    </textarea>
     
-   svg{
-     background-size: cover;
-    margin-left: 38rem;
-    border: none;
+    <div class="procedures-container">
+        <h3>Yapılan İşlemler Listesi</h3>
+        <div class="procedures-list" id="proceduresList">
+            <!-- İşlemler burada listelenecek -->
+            <p class="no-procedures">Henüz bir işlem kaydedilmedi.</p>
+        </div>
+    </div>
 
-   }
-
-   /* Butonun genel stili */
-.save-database-button {
-    background-color: #0055aa; /* Yeşil arka plan */
-    color: white;              /* Beyaz yazı rengi */
-    border: none;              /* Kenarlık yok */
-    padding: 15px 32px;        /* Dikey ve yatay padding */
-    text-align: center;        /* Yazıyı ortala */
-    text-decoration: none;     /* Alt çizgi yok */
-    display: inline-block;     /* Butonun satır içinde görünmesini sağla */
-    font-size: 16px;           /* Yazı boyutu */
-    border-radius: 8px;        /* Yuvarlatılmış köşeler */
-    transition: all 0.3s ease; /* Geçiş efekti */
-    cursor: pointer;          /* Tıklanabilir işaretçi */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Hafif gölge efekti */
-}
-
-/* Hover efekti: butona üzerine gelindiğinde */
-.save-database-button:hover {
-    background-color: #0055aa; /* Hoverda daha koyu yeşil */
-    transform: translateY(-2px); /* Butonu yukarıya kaydır */
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2); /* Hoverda daha belirgin gölge */
-}
-
-/* Focus ve aktif durumlar için: */
-.save-database-button:focus,
-.save-database-button:active {
-    outline: none; /* Dış çerçeveyi kaldır */
-    background-color: #0055aa; /* Tıklanmış durumda daha koyu yeşil */
-}
-
-
-
-  </style>
-  <script>
-    // JavaScript kodunu listeleme bölümüne buton ekleyecek ve kayıt işlemini gerçekleştirecek şekilde düzenleyelim
-    document.addEventListener("DOMContentLoaded", function() {
-      // Mevcut procedures-list sonuna kaydet butonu ekleyelim
-      const proceduresList = document.getElementById("proceduresList");
-
-      // Eğer hali hazırda buton eklenmemişse ekle
-    if (!document.getElementById("saveAllToDatabase")) {
-    const saveDbButton = document.createElement("button");
-    saveDbButton.id = "saveAllToDatabase";
-    saveDbButton.className = "save-database-button";
-    saveDbButton.textContent = "Tüm İşlemleri Veritabanına Kaydet";
-
-    // Butonu listeye ekle
-    proceduresList.parentNode.appendChild(saveDbButton);
-
-    // Butona tıklama olayı ekle
-    saveDbButton.addEventListener("click", function() {
-        // Veritabanına kaydetme işlevini çağır
-        saveProceduresToDatabase();
+    <!-- Tabloyu gösterecek HTML yapısı -->
+    <div class="patient-records-container">
+        <h3>Geçmiş İşlem Kayıtları</h3>
         
-        // Sayfayı yenileyen kod
-        alert("Sayfa yenileniyor..."); // Bu uyarıyı görmek, bu kısmın çalışıp çalışmadığını kontrol etmek için ekleyebilirsiniz.
-        location.reload(); // Sayfayı yenile
-    });
-}
+        <?php if (isset($user) && $user): ?>
+            <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                <!-- Kullanıcı resmi -->
+                <img src="../uploaded_files/<?= htmlspecialchars($user['image']); ?>" class="image" style="width: 120px; border-radius: 10px;">
+                
+                <!-- Kullanıcı ismi ve soyismi -->
+                <h3><?php echo htmlspecialchars($user['name'])?></h3>
+            </div>
+            
+            <!-- Gizli input alanları - işlem kaydedilirken kullanılacak -->
+            <input type="hidden" id="current_user_id" value="<?= htmlspecialchars($userId) ?>">
+            <input type="hidden" id="doctor_name" value="Enes"> <!-- Burayı gerçek doktor adıyla değiştirin -->
+            
+            <div class="table-container">
+                <!-- Tabloyu oluşturuyoruz -->
+                <table border="1">
+                    <thead>
+                        <tr>
+                            <th>İşlem ID</th>
+                            <th>Diş ID</th>
+                            <th>Yapılan İşlem</th>
+                            <th>Doktor Adı</th>
+                            <th>İşlem Tarihi</th>
+                            <th>Ücret</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        // Verileri tabloya yazdırıyoruz
+                        if (isset($procedures) && count($procedures) > 0) {
+                            foreach ($procedures as $procedure) {
+                                echo "<tr>";
+                                echo "<td>" . htmlspecialchars($procedure['islem_id']) . "</td>";
+                                echo "<td>" . htmlspecialchars($procedure['dis_id']) . "</td>";
+                                echo "<td>" . htmlspecialchars($procedure['yapilan_islem']) . "</td>";
+                                echo "<td>" . htmlspecialchars($procedure['doktor_ad']) . "</td>";
+                                echo "<td>" . htmlspecialchars($procedure['islem_tarihi']) . "</td>";
+                                echo "<td>" . htmlspecialchars($procedure['ucret']) . "</td>";
+                                echo "</tr>";
+                            }
+                        } else {
+                            echo "<tr><td colspan='6'>Bu hasta için kayıtlı işlem bulunamadı.</td></tr>";
+                        }
+                        ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php else: ?>
+            <p>Lütfen bir hasta seçin.</p>
+        <?php endif; ?>
+    </div>
+
+    <!-- JavaScript kodu (mevcut JS kodunuzu buraya ekleyin) -->
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  // Kaydedilen notları tutmak için boş bir obje
+  let savedNotes = {};
+  
+  // SVG elementini seç
+  const svg = document.getElementById("svg");
+  
+  // Eski popup input elementini kaldır
+  const oldInput = document.getElementById("popupInput");
+  if (oldInput) {
+    oldInput.remove();
+  }
+  
+  // Pulse efekti için element oluştur
+  const pulseElement = document.createElement("div");
+  pulseElement.className = "pulse-bg";
+  pulseElement.style.display = "none";
+  document.body.appendChild(pulseElement);
+  
+  // Seçili dişi takip etmek için
+  let selectedTooth = null;
+  
+  // Tüm path elementlerine cursor ve hover özelliği ekle
+  const paths = svg.querySelectorAll("path");
+  paths.forEach(function(path) {
+    const id = path.getAttribute("id");
+    
+    // Sadece 1-32 arası ID'li pathler diş olarak işlenecek
+    if (id && !isNaN(id) && parseInt(id) >= 1 && parseInt(id) <= 32) {
+      // Cursor style ekle
+      path.style.cursor = "pointer";
       
-
-      // Veritabanına kaydetme fonksiyonu
-      function saveProceduresToDatabase() {
-        // Tüm işlem elemanlarını seç
-        const procedureItems = document.querySelectorAll('.procedure-item');
-
-        // Eğer işlem yoksa uyar ve çık
-        if (procedureItems.length === 0) {
-          alert("Kaydedilecek işlem bulunamadı!");
-          return;
+      // Hover efektleri
+      path.addEventListener("mouseenter", function() {
+        if (this !== selectedTooth) {
+          this.style.fill = "#e6f7ff";
         }
-
-        // Tüm işlemleri al ve formatlı dizi oluştur
-        const procedures = [];
-        procedureItems.forEach(item => {
-          const toothNumber = item.querySelector('.tooth-number').textContent;
-          const procedureDesc = item.querySelector('.procedure-desc').textContent;
-
-          // Diş numarasından # işaretini temizle ve sadece sayıyı al
-          const disId = toothNumber.replace('Diş #', '').replace(':', '');
-
-          procedures.push({
-            user_id: getCurrentUserId(), // Kullanıcı ID'sini al
-            dis_id: disId,
-            yapilan_islem: procedureDesc,
-            doktor_ad: getCurrentDoctorName(), // Doktor adını al
-            islem_tarihi: new Date().toISOString().split('T')[0], // Bugünün tarihi YYYY-MM-DD formatında
-            ucret: 0.00 // Varsayılan ücret, bunu sonra değiştirebilirsiniz
-          });
-        });
-
-        // Butonu devre dışı bırak ve yükleniyor durumunu göster
-        const saveButton = document.getElementById("saveAllToDatabase");
-        saveButton.disabled = true;
-        saveButton.textContent = "Kaydediliyor...";
-        saveButton.classList.add("saving");
-
-        // AJAX ile verileri gönder
-        fetch('save_procedures.php', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              procedures: procedures
-            })
-          })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              // Başarılı mesajı göster
-              alert("Tüm işlemler başarıyla veritabanına kaydedildi!");
-
-              // İsterseniz işlem listesini temizleyin
-              // proceduresList.innerHTML = '<p class="no-procedures">Henüz bir işlem kaydedilmedi.</p>';
-
-              // Diş durumlarını güncelle (veritabanında kaydedilmiş olarak)
-              procedures.forEach(proc => {
-                const toothElement = document.getElementById(proc.dis_id);
-                if (toothElement) {
-                  toothElement.classList.remove("saved-tooth");
-                  toothElement.classList.add("completed-tooth");
-                }
-              });
-            } else {
-              alert("Hata: " + data.message);
-            }
-          })
-          .catch(error => {
-            console.error('Error:', error);
-            alert("Bir hata oluştu, lütfen tekrar deneyin.");
-          })
-          .finally(() => {
-            // Butonu normal duruma geri getir
-            saveButton.disabled = false;
-            saveButton.textContent = "Tüm İşlemleri Veritabanına Kaydet";
-            saveButton.classList.remove("saving");
-          });
-      }
-
-      // Kullanıcı ID'sini almak için yardımcı fonksiyon
-      function getCurrentUserId() {
-        // Burayı kendi sisteminize göre düzenleyin
-        // Örnek: Hidden bir input'tan veya localStorage'dan okuma
-        const userIdElement = document.getElementById('current_user_id');
-        if (userIdElement) {
-          return userIdElement.value;
+      });
+      
+      path.addEventListener("mouseleave", function() {
+        if (this !== selectedTooth) {
+          this.style.fill = "#fff";
         }
-
-        // Varsayılan değer - bunu mutlaka kendi sisteminize göre düzenleyin!
-        return "HNMIgyDBGmkJSdoVLdiB"; // Örnek olarak veritabanınızda bulunan bir kullanıcı ID'si
-      }
-
-      // Doktor adını almak için yardımcı fonksiyon
-      function getCurrentDoctorName() {
-        // Burayı kendi sisteminize göre düzenleyin
-        const doctorNameElement = document.getElementById('doctor_name');
-        if (doctorNameElement) {
-          return doctorNameElement.value;
-        }
-
-        // Varsayılan değer - bunu mutlaka kendi sisteminize göre düzenleyin!
-        return "Enes"; // Örnek olarak veritabanınızda bulunan bir doktor adı
+      });
+      
+      // Tıklama olayı - burada diş yükselecek ve not kutusu açılacak
+      path.addEventListener("click", function() {
+        handleToothClick(this);
+      });
+    }
+  });
+  
+  // Diş tıklama işleyicisi
+  function handleToothClick(tooth) {
+    // Daha önce seçili bir diş varsa, onu temizle
+    if (selectedTooth) {
+      selectedTooth.classList.remove("selected-tooth");
+      selectedTooth.style.fill = "#fff";
+    }
+    
+    // Yeni seçilen dişi işaretle
+    selectedTooth = tooth;
+    tooth.classList.add("selected-tooth");
+    
+    // Pulse efektini göster
+    const rect = tooth.getBoundingClientRect();
+    pulseElement.style.left = rect.left + rect.width/2 + "px";
+    pulseElement.style.top = rect.top + rect.height/2 + "px";
+    pulseElement.style.display = "block";
+    
+    // Not penceresini aç
+    const toothId = tooth.getAttribute("id");
+    openNoteBox(toothId, rect);
+  }
+  
+  // Not penceresini açma fonksiyonu
+  function openNoteBox(toothId, rect) {
+    // Eski not kutusunu kaldır
+    const existingBox = document.querySelector(".note-box");
+    if (existingBox) {
+      existingBox.remove();
+    }
+    
+    // Yeni not kutusu oluştur
+    const noteBox = document.createElement("div");
+    noteBox.className = "note-box";
+    
+    // Başlık ekle
+    const title = document.createElement("div");
+    title.className = "note-title";
+    title.textContent =` Diş #${toothId} için not`;
+    noteBox.appendChild(title);
+    
+    // Textarea ekle
+    const textarea = document.createElement("textarea");
+    textarea.rows = 3;
+    textarea.placeholder = "Bu diş için notlarınızı girin...";
+    
+    // Eğer daha önce not kaydedildiyse, textarea'ya ekle
+    if (savedNotes[toothId]) {
+      textarea.value = savedNotes[toothId];
+    }
+    
+    noteBox.appendChild(textarea);
+    
+    // Buton container ekle
+    const buttonContainer = document.createElement("div");
+    buttonContainer.className = "button-container";
+    
+    // Kaydet butonu ekle
+    const saveButton = document.createElement("button");
+    saveButton.className = "note-save-button";
+    saveButton.textContent = "Kaydet";
+    saveButton.onclick = function() {
+      saveNote(toothId, textarea.value);
+    };
+    buttonContainer.appendChild(saveButton);
+    
+    // İptal butonu ekle
+    const cancelButton = document.createElement("button");
+    cancelButton.className = "note-cancel-button";
+    cancelButton.textContent = "İptal";
+    cancelButton.onclick = function() {
+      closeNoteBox();
+    };
+    buttonContainer.appendChild(cancelButton);
+    
+    // Buton container'ı not kutusuna ekle
+    noteBox.appendChild(buttonContainer);
+    
+    // Not kutusunu body'ye ekle
+    document.body.appendChild(noteBox);
+    
+    // Not kutusunu diğin üstüne konumlandır
+    noteBox.style.position = "absolute";
+    noteBox.style.left = rect.left + rect.width/2 + "px";
+    noteBox.style.top = rect.top - 10 + "px";
+    
+    // Not kutusuna animasyon ekle
+    setTimeout(function() {
+      noteBox.classList.add("active");
+    }, 10);
+    
+    // Textarea'ya odaklan
+    textarea.focus();
+    
+    // Enter tuşuyla kaydetme
+    textarea.addEventListener("keydown", function(e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        saveNote(toothId, textarea.value);
       }
     });
+  }
+  
+  // Not kutusunu kapatma fonksiyonu
+  function closeNoteBox() {
+    const noteBox = document.querySelector(".note-box");
+    if (noteBox) {
+      noteBox.classList.add("closing");
+      setTimeout(function() {
+        noteBox.remove();
+      }, 300);
+    }
     
-  </script>
+    // Diş efektlerini kaldır
+    if (selectedTooth) {
+      if (!selectedTooth.classList.contains("saved-tooth")) {
+        selectedTooth.classList.remove("selected-tooth");
+        selectedTooth.style.fill = "#fff";
+      }
+      selectedTooth = null;
+    }
+    
+    // Pulse efektini gizle
+    pulseElement.style.display = "none";
+  }
+  
+  // Not kaydetme fonksiyonu
+  function saveNote(toothId, text) {
+    if (!text.trim()) {
+      alert("Lütfen bir not giriniz!");
+      return;
+    }
+    
+    // Notu kaydet
+    savedNotes[toothId] = text.trim();
+    
+    // Dişi kayıtlı olarak işaretle
+    const tooth = document.getElementById(toothId);
+    if (tooth) {
+      tooth.classList.remove("selected-tooth");
+      tooth.classList.add("saved-tooth");
+      tooth.style.fill = "#ffeb3b"; // Sarı
+    }
+    
+    // Not kutusunu kapat
+    closeNoteBox();
+    
+    // İşlem listesini güncelle
+    updateProceduresList();
+  }
+  
+  // İşlemler listesini güncelleme fonksiyonu
+  function updateProceduresList() {
+    const proceduresList = document.getElementById("proceduresList");
+    
+    // Liste boşsa veya yoksa çık
+    if (!proceduresList) return;
+    
+    // Listeyi temizle
+    proceduresList.innerHTML = "";
+    
+    // Kayıtlı not yoksa "henüz işlem yok" yaz
+    if (Object.keys(savedNotes).length === 0) {
+      const noNotes = document.createElement("p");
+      noNotes.className = "no-procedures";
+      noNotes.textContent = "Henüz bir işlem kaydedilmedi.";
+      proceduresList.appendChild(noNotes);
+      return;
+    }
+    
+    // Her kayıtlı not için bir satır ekle
+    for (const toothId in savedNotes) {
+      const item = document.createElement("div");
+      item.className = "procedure-item";
+      
+      const number = document.createElement("span");
+      number.className = "tooth-number";
+      number.textContent =` Diş #${toothId}:`;
+      
+      const desc = document.createElement("span");
+      desc.className = "procedure-desc";
+      desc.textContent = savedNotes[toothId];
+      
+      item.appendChild(number);
+      item.appendChild(desc);
+      proceduresList.appendChild(item);
+    }
+    
+    // Eğer veritabanına kaydet butonu yoksa ekle
+    if (!document.getElementById("saveAllToDatabase")) {
+      const saveBtn = document.createElement("button");
+      saveBtn.id = "saveAllToDatabase";
+      saveBtn.className = "save-database-button";
+      saveBtn.textContent = "Tüm İşlemleri Veritabanına Kaydet";
+      saveBtn.onclick = saveProceduresToDatabase;
+      
+      // Butonu liste konteynırına ekle
+      proceduresList.parentNode.appendChild(saveBtn);
+    }
+  }
+  
+  // Veritabanına kaydetme fonksiyonu
+  function saveProceduresToDatabase() {
+    // İşlem öğelerini al
+    const items = document.querySelectorAll(".procedure-item");
+    
+    // İşlem yoksa uyar ve çık
+    if (items.length === 0) {
+      alert("Kaydedilecek işlem bulunamadı!");
+      return;
+    }
+    
+    // Kaydet butonunu devre dışı bırak
+    const saveBtn = document.getElementById("saveAllToDatabase");
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Kaydediliyor...";
+    saveBtn.classList.add("saving");
+    
+    // İşlemleri topla
+    const procedures = [];
+    
+    items.forEach(function(item) {
+      const toothNumber = item.querySelector(".tooth-number").textContent;
+      const procedureDesc = item.querySelector(".procedure-desc").textContent;
+      
+      // Diş numarasını ayıkla
+      const disId = toothNumber.replace("Diş #", "").replace(":", "");
+      
+      // User ID'yi al
+      const userId = document.getElementById("current_user_id")?.value || null;
+      
+      // Doktor adını al
+      const doctorName = document.getElementById("doctor_name")?.value || "Doktor";
+      
+      // İşlemi listeye ekle
+      procedures.push({
+        user_id: userId,
+        dis_id: disId,
+        yapilan_islem: procedureDesc,
+        doktor_ad: doctorName,
+        islem_tarihi: new Date().toISOString().split("T")[0], // YYYY-MM-DD formatı
+        ucret: 0 // Varsayılan ücret
+      });
+    });
+    
+    // Verileri save_procedures.php'ye gönder
+    fetch("save_procedures.php", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ procedures: procedures })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        // Başarılı mesajı göster
+        alert("Tüm işlemler başarıyla kaydedildi!");
+        
+        // Notları ve listeyi temizle
+        savedNotes = {};
+        updateProceduresList();
+        
+        // Kayıtlı dişlerin stilini sıfırla
+        document.querySelectorAll(".saved-tooth").forEach(function(tooth) {
+          tooth.classList.remove("saved-tooth");
+          tooth.style.fill = "#fff";
+        });
+        
+        // Sayfayı yenile
+        location.reload();
+      } else {
+        alert("Hata: " + data.message);
+      }
+    })
+    .catch(error => {
+      console.error("Hata:", error);
+      alert("Kaydetme işlemi başarısız: " + error.message);
+    })
+    .finally(() => {
+      // Butonu normal duruma getir
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Tüm İşlemleri Veritabanına Kaydet";
+      saveBtn.classList.remove("saving");
+    });
+  }
+  
+  // Sayfada boş bir yere tıklanınca not kutusunu kapat
+  document.addEventListener("click", function(e) {
+    const noteBox = document.querySelector(".note-box");
+    
+    // Eğer not kutusu yoksa işlem yapma
+    if (!noteBox) return;
+    
+    // Tıklanan element not kutusu veya SVG değilse, notu kapat
+    if (!noteBox.contains(e.target) && !svg.contains(e.target)) {
+      closeNoteBox();
+    }
+  });
+});
+</script>
+
+    <!-- CSS stilleriniz (mevcut CSS stillerinizi buraya ekleyin) -->
+ <style>
+  /* Gelişmiş Diş Haritası ve Not Sistemi CSS */
+
+/* Ana stil reset ve ayarları */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-image: url('../image/arka_plan.png');
+  background-size: cover;
+  background-attachment: fixed;
+  color: #333;
+  line-height: 1.6;
+  padding: 20px;
+}
+
+/* Konteynerler */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 15px;
+}
+
+/* Başlık Stili */
+.header-container {
+  text-align: center;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 10px;
+  padding: 20px;
+  margin: 20px auto 30px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  max-width: 800px;
+  position: relative;
+  overflow: hidden;
+  border-top: 5px solid #0066cc;
+}
+
+.header-container:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, rgba(0, 102, 204, 0.1) 0%, rgba(255, 255, 255, 0) 50%);
+}
+
+.header-container h2 {
+  margin: 0 0 10px;
+  color: #0066cc;
+  font-size: 28px;
+  font-weight: 600;
+  position: relative;
+}
+
+.instructions {
+  color: #666;
+  font-size: 16px;
+  position: relative;
+}
+
+/* SVG Diş Haritası */
+svg {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+  background-color: rgba(255, 255, 255, 0.95);
+  border-radius: 15px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  padding: 15px;
+  border: 1px solid rgba(0, 102, 204, 0.2);
+  transition: all 0.3s ease;
+}
+
+svg:hover {
+  box-shadow: 0 10px 30px rgba(0, 102, 204, 0.2);
+}
+
+/* SVG Path - Dişler */
+svg path {
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  fill: #fff;
+  stroke: #333;
+  stroke-width: 1px;
+}
+
+svg path:hover {
+  fill: #e6f7ff;
+  filter: drop-shadow(0 2px 3px rgba(0, 102, 204, 0.3));
+  transform: translateY(-2px);
+}
+
+/* Seçili diş animasyonu */
+.selected-tooth {
+  animation: toothPop 0.6s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+  fill: #66c2ff !important;
+  filter: drop-shadow(0 15px 20px rgba(0, 0, 0, 0.4)) !important;
+  z-index: 10;
+}
+
+@keyframes toothPop {
+  0% {
+    transform: translateY(0) scale(1) rotate(0deg);
+    fill: #fff;
+  }
+  30% {
+    transform: translateY(-35px) scale(1.2) rotate(-3deg);
+    fill: #b3e0ff;
+  }
+  50% {
+    transform: translateY(-40px) scale(1.25) rotate(2deg);
+    fill: #99d6ff;
+  }
+  70% {
+    transform: translateY(-35px) scale(1.2) rotate(-1deg);
+    fill: #80ccff;
+  }
+  100% {
+    transform: translateY(-30px) scale(1.15) rotate(0deg);
+    fill: #66c2ff;
+  }
+}
+
+/* Kayıtlı diş stili */
+.saved-tooth {
+  fill: #ffeb3b !important;
+  filter: drop-shadow(0 3px 8px rgba(255, 193, 7, 0.4));
+  transition: all 0.3s ease;
+}
+
+.saved-tooth:hover {
+  fill: #ffd740 !important;
+  transform: translateY(-5px);
+}
+
+/* Pulse efekti */
+.pulse-bg {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(102, 204, 255, 0.4) 0%, rgba(102, 204, 255, 0) 70%);
+  pointer-events: none;
+  z-index: 5;
+  width: 120px;
+  height: 120px;
+  animation: pulse 2s infinite;
+  display: none;
+}
+
+@keyframes pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.3);
+    opacity: 0.3;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0.8;
+  }
+}
+
+/* Not Kutusu */
+.note-box {
+  position: absolute;
+  width: 280px;
+  background: #ffffff;
+  border-radius: 15px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2), 0 5px 15px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  padding: 20px;
+  transform: translate(-50%, -120%) scale(0.8);
+  opacity: 0;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  border: 1px solid rgba(0, 102, 204, 0.1);
+  overflow: hidden;
+}
+
+.note-box:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, rgba(0, 102, 204, 0.05) 0%, rgba(255, 255, 255, 0) 60%);
+  z-index: -1;
+}
+
+.note-box:after {
+  content: '';
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 20px;
+  background: #ffffff;
+  border-right: 1px solid rgba(0, 102, 204, 0.1);
+  border-bottom: 1px solid rgba(0, 102, 204, 0.1);
+  transform: translateX(-50%) rotate(45deg);
+  z-index: -1;
+}
+
+.note-box.active {
+  transform: translate(-50%, -120%) scale(1);
+  opacity: 1;
+}
+
+.note-box.closing {
+  transform: translate(-50%, -150%) scale(0.8);
+  opacity: 0;
+}
+
+.note-title {
+  color: #0066cc;
+  font-weight: 600;
+  font-size: 16px;
+  margin-bottom: 12px;
+  text-align: center;
+  border-bottom: 2px solid rgba(0, 102, 204, 0.1);
+  padding-bottom: 8px;
+}
+
+.note-box textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  resize: none;
+  margin-bottom: 15px;
+  font-family: inherit;
+  font-size: 15px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s;
+}
+
+.note-box textarea:focus {
+  outline: none;
+  border-color: #0066cc;
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1), inset 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* Buton konteyneri */
+.button-container {
+  display: flex;
+  gap: 10px;
+}
+
+.note-save-button, .note-cancel-button {
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  flex: 1;
+}
+
+.note-save-button {
+  background-color: #0066cc;
+  color: white;
+  box-shadow: 0 3px 8px rgba(0, 102, 204, 0.3);
+}
+
+.note-save-button:hover {
+  background-color: #0055bb;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 12px rgba(0, 102, 204, 0.4);
+}
+
+.note-save-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 5px rgba(0, 102, 204, 0.3);
+}
+
+.note-cancel-button {
+  background-color: #f0f0f0;
+  color: #555;
+}
+
+.note-cancel-button:hover {
+  background-color: #e5e5e5;
+  transform: translateY(-2px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+}
+
+.note-cancel-button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* İşlemler Listesi */
+.procedures-container {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 15px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  padding: 25px;
+  margin: 40px auto;
+  max-width: 800px;
+  position: relative;
+  border-top: 5px solid #0066cc;
+}
+
+.procedures-container h3 {
+  color: #0066cc;
+  font-size: 20px;
+  margin-top: 0;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(0, 102, 204, 0.2);
+}
+
+.procedures-list {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 20px;
+  padding-right: 10px;
+}
+
+.procedures-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.procedures-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.procedures-list::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 10px;
+}
+
+.procedures-list::-webkit-scrollbar-thumb:hover {
+  background: #0066cc;
+}
+
+.procedure-item {
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  background: #f9f9f9;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s;
+  animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.procedure-item:hover {
+  background: #f0f7ff;
+  box-shadow: 0 3px 8px rgba(0, 102, 204, 0.1);
+}
+
+.tooth-number {
+  font-weight: bold;
+  color: #0066cc;
+  padding: 5px 12px;
+  background: rgba(0, 102, 204, 0.1);
+  border-radius: 6px;
+  margin-right: 15px;
+  min-width: 80px;
+  text-align: center;
+}
+
+.procedure-desc {
+  flex: 1;
+  color: #333;
+  line-height: 1.4;
+}
+
+.no-procedures {
+  text-align: center;
+  padding: 30px 0;
+  color: #888;
+  font-style: italic;
+  background: #f9f9f9;
+  border-radius: 8px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* Veritabanına Kaydetme Butonu */
+.save-database-button {
+  background: linear-gradient(135deg, #28a745 0%, #20883a 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 14px 20px;
+  font-size: 16px;
+  font-weight: 600;
+  width: 100%;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+  position: relative;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.save-database-button:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.3) 50%, rgba(255, 255, 255, 0) 100%);
+  transform: translateX(-100%);
+  transition: transform 0.6s;
+}
+
+.save-database-button:hover {
+  background: linear-gradient(135deg, #20883a 0%, #176e2e 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(40, 167, 69, 0.4);
+}
+
+.save-database-button:hover:before {
+  transform: translateX(100%);
+}
+
+.save-database-button:active {
+  transform: translateY(0);
+  box-shadow: 0 3px 8px rgba(40, 167, 69, 0.3);
+}
+
+.save-database-button.saving {
+  background: #6c757d;
+  cursor: not-allowed;
+  box-shadow: 0 3px 8px rgba(108, 117, 125, 0.3);
+}
+
+.save-database-button.saving:before {
+  display: none;
+}
+
+/* Hasta Seçici */
+.user-selector {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  margin: 0 auto 30px;
+  max-width: 800px;
+  position: relative;
+  border-top: 5px solid #0066cc;
+}
+
+.user-selector h2 {
+  color: #0066cc;
+  font-size: 18px;
+  margin-top: 0;
+  margin-bottom: 15px;
+}
+
+.user-selector select {
+  width: 100%;
+  padding: 12px 15px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  background-color: #f9f9f9;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230066cc' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+}
+
+.user-selector select:focus {
+  outline: none;
+  border-color: #0066cc;
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1), inset 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* Hasta Kayıtları */
+.patient-records-container {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 15px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  padding: 25px;
+  margin: 40px auto;
+  max-width: 900px;
+  position: relative;
+  border-top: 5px solid #0066cc;
+}
+
+.patient-records-container h3 {
+  color: #0066cc;
+  font-size: 20px;
+  margin-top: 0;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(0, 102, 204, 0.2);
+}
+
+/* Hasta Profil Bilgisi */
+.patient-info {
+  display: flex;
+  align-items: center;
+  background: #f0f7ff;
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 25px;
+  box-shadow: 0 3px 8px rgba(0, 102, 204, 0.1);
+}
+
+.patient-info img {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  margin-right: 20px;
+  border: 3px solid white;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+  object-fit: cover;
+}
+
+.patient-info h3 {
+  color: #333;
+  margin: 0;
+  padding: 0;
+  border: none;
+  font-size: 18px;
+}
+
+/* Tablo Stillemesi */
+.table-container {
+  overflow-x: auto;
+  border-radius: 10px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+thead {
+  background: linear-gradient(135deg, #0066cc 0%, #0055bb 100%);
+  color: white;
+}
+
+th {
+  text-align: left;
+  padding: 15px;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+tr:nth-child(even) {
+  background-color: #f8f9fa;
+}
+
+tr:hover {
+  background-color: #f0f7ff;
+}
+
+td {
+  padding: 15px;
+  border-bottom: 1px solid #eee;
+  transition: all 0.2s;
+}
+
+/* Responsive Ayarlar */
+@media (max-width: 768px) {
+  .header-container, 
+  .procedures-container,
+  .user-selector,
+  .patient-records-container {
+    padding: 15px;
+  }
+
+  .header-container h2 {
+    font-size: 22px;
+  }
+
+  .note-box {
+    width: 90%;
+    max-width: 300px;
+  }
+
+  .patient-info {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .patient-info img {
+    margin-right: 0;
+    margin-bottom: 10px;
+  }
+
+  table th,
+  table td {
+    padding: 10px;
+    font-size: 14px;
+  }
+}
+
+/* Animasyonlar ve Geçişler */
+.transition-all {
+  transition: all 0.3s ease;
+}
+
+.hover-shadow:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Print Media Stili */
+@media print {
+  .header-container, 
+  .user-selector,
+  .procedures-container,
+  .save-database-button,
+  .note-box {
+    display: none;
+  }
+
+  .patient-records-container {
+    box-shadow: none;
+    border: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  table {
+    box-shadow: none;
+  }
+
+  table th {
+    background: #f0f0f0;
+    color: #333;
+  }
+}
+ </style>
 </body>
 </html>
