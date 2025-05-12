@@ -24,7 +24,9 @@ try {
 // Artık tekrar PDO bağlantısını yapmanıza gerek yok.
 
 // URL üzerinden gelen kullanıcı ID'sini al
-$userId = isset($_GET['user_id']) ? $_GET['user_id'] : null; // Eğer yoksa null döner
+$userId = isset($_GET['user_id']) ? $_GET['user_id'] : null;
+
+
 
 // Eğer user_id parametresi gelmediyse, hata mesajı göster
 if ($userId === null) {
@@ -34,9 +36,11 @@ if ($userId === null) {
 
 try {
     // PDO sorgusu ile verileri alıyoruz
-    $stmt = $pdo->prepare("SELECT * FROM yapilan_islem WHERE user_id = :user_id");
-    $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
-    $stmt->execute();
+  $stmt = $pdo->prepare("SELECT name, image FROM users WHERE id = :user_id");
+$stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+
+$stmt->execute();
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
 
     // Verileri çek
     $procedures = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -66,12 +70,18 @@ try {
     echo "Error: " . $e->getMessage();
 }
 
-$user_id = $_GET['user_id']; // veya session'dan da alabilirsin
+$user_id = $_GET['user_id'];
+
+
 
 // Kullanıcının bilgilerini alıyoruz
-$stmt = $pdo->prepare("SELECT name, image FROM users WHERE id = :user_id");
-$stmt->execute(['user_id' => $user_id]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
+$stmt = $pdo->prepare("SELECT * FROM yapilan_islem WHERE user_id = :user_id");
+$stmt->bindParam(':user_id', $user_id); // Tip belirtme, varsayılan string
+ // Burada $user_id kullanıyoruz
+$stmt->execute();
+$procedures = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+
 ?>
 
 
@@ -379,15 +389,19 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
   <!-- Tabloyu gösterecek HTML yapısı -->
   <div class="patient-records-container">
     <h3>Geçmiş İşlem Kayıtları</h3>
+    
 <?php if ($user): ?>
     <div style="display: flex; align-items: center; margin-bottom: 20px;">
+        <!-- Kullanıcı resmi -->
         <img src="../uploaded_files/<?= htmlspecialchars($user['image']); ?>" class="image" style="width: 120px; border-radius: 10px;">
-
-        <h3><?php echo htmlspecialchars($user['name']); ?></h3>
+        
+        <!-- Kullanıcı ismi ve soyismi -->
+        <h3><?php echo htmlspecialchars($user['name'])?></h3>
     </div>
 <?php else: ?>
     <p>Hasta bilgisi bulunamadı.</p>
 <?php endif; ?>
+
 
     <div class="table-container">
       <!-- Tabloyu oluşturuyoruz -->
@@ -1151,19 +1165,25 @@ td[colspan="6"] {
       const proceduresList = document.getElementById("proceduresList");
 
       // Eğer hali hazırda buton eklenmemişse ekle
-      if (!document.getElementById("saveAllToDatabase")) {
-        const saveDbButton = document.createElement("button");
-        saveDbButton.id = "saveAllToDatabase";
-        saveDbButton.className = "save-database-button";
-        saveDbButton.textContent = "Tüm İşlemleri Veritabanına Kaydet";
+    if (!document.getElementById("saveAllToDatabase")) {
+    const saveDbButton = document.createElement("button");
+    saveDbButton.id = "saveAllToDatabase";
+    saveDbButton.className = "save-database-button";
+    saveDbButton.textContent = "Tüm İşlemleri Veritabanına Kaydet";
 
-        // Butonu listeye ekle
-        proceduresList.parentNode.appendChild(saveDbButton);
+    // Butonu listeye ekle
+    proceduresList.parentNode.appendChild(saveDbButton);
 
-        // Butona tıklama olayı ekle
-        saveDbButton.addEventListener("click", saveProceduresToDatabase);
-      }
-
+    // Butona tıklama olayı ekle
+    saveDbButton.addEventListener("click", function() {
+        // Veritabanına kaydetme işlevini çağır
+        saveProceduresToDatabase();
+        
+        // Sayfayı yenileyen kod
+        alert("Sayfa yenileniyor..."); // Bu uyarıyı görmek, bu kısmın çalışıp çalışmadığını kontrol etmek için ekleyebilirsiniz.
+        location.reload(); // Sayfayı yenile
+    });
+}
       
 
       // Veritabanına kaydetme fonksiyonu
@@ -1270,6 +1290,7 @@ td[colspan="6"] {
         return "Enes"; // Örnek olarak veritabanınızda bulunan bir doktor adı
       }
     });
+    
   </script>
 </body>
 </html>

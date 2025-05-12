@@ -1,17 +1,15 @@
 <?php
 // save_procedures.php
-// This script receives dental procedure data and saves it to the database
+// Bu script birden fazla hastanın işlemlerini ayrı ayrı kaydeder.
 
 // Database connection
-$host = "localhost:3306"; // Update with your actual host:port
-$user = "root";          // Update with your actual database username
-$pass = "";             // Update with your actual database password
-$dbname = "dental_db";  // Your database name from the SQL dump
+$host = "localhost:3306";
+$user = "root";
+$pass = "";
+$dbname = "dental_db";
 
-// Create connection
 $conn = new mysqli($host, $user, $pass, $dbname);
 
-// Check connection
 if ($conn->connect_error) {
     die(json_encode([
         'success' => false,
@@ -19,9 +17,12 @@ if ($conn->connect_error) {
     ]));
 }
 
-// Get POST data as JSON
+// Get POST data
 $json = file_get_contents('php://input');
 $data = json_decode($json, true);
+
+file_put_contents("debug.json", json_encode($data, JSON_PRETTY_PRINT));
+
 
 if (!isset($data['procedures']) || empty($data['procedures'])) {
     echo json_encode([
@@ -31,90 +32,71 @@ if (!isset($data['procedures']) || empty($data['procedures'])) {
     exit;
 }
 
-// Start transaction for multiple inserts
+// Hastalara göre grupla
+$proceduresByUser = [];
+
+foreach ($data['procedures'] as $procedure) {
+    $userId = $procedure['user_id'];
+    if (!isset($proceduresByUser[$userId])) {
+        $proceduresByUser[$userId] = [];
+    }
+    $proceduresByUser[$userId][] = $procedure;
+}
+
+// İşlemleri kayıt et
 $conn->begin_transaction();
 
 try {
-    // Önce islem tablosuna yeni bir işlem kaydı oluştur
-    // Böylece tüm dişler aynı işlem ID'sini kullanacak
-    $currentDate = date('Y-m-d H:i:s');
-    $userId = $data['procedures'][0]['user_id']; // İlk kayıttaki kullanıcı ID'sini al
-    
-    // islem tablosuna kayıt ekle
-    $islemStmt = $conn->prepare("INSERT INTO islem (user_id, islem_tarihi) VALUES (?, ?)");
-    
-    if (!$islemStmt) {
-        throw new Exception("İşlem prepared statement hatası: " . $conn->error);
-    }
-    
-    $islemStmt->bind_param("ss", $userId, $currentDate);
-    
-    if (!$islemStmt->execute()) {
-        throw new Exception("İşlem kaydı hatası: " . $islemStmt->error);
-    }
-    
-    // Eklenen işlemin ID'sini al
-    $islemId = $conn->insert_id;
-    $islemStmt->close();
-    
-    // Şimdi yapilan_islem tablosuna dişleri ekleyelim
-    $stmt = $conn->prepare("INSERT INTO yapilan_islem (islem_id, user_id, dis_id, yapilan_islem, doktor_ad, islem_tarihi, ucret) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    
-    // Check if prepared statement was created
-    if (!$stmt) {
-        throw new Exception("Prepared statement error: " . $conn->error);
-    }
-    
-    $success = true;
-    $errorMessage = '';
-    
-    foreach ($data['procedures'] as $procedure) {
-        // Bind parameters and execute
-        $stmt->bind_param(
-            "isssssd", 
-            $islemId,
-            $procedure['user_id'],
-            $procedure['dis_id'],
-            $procedure['yapilan_islem'],
-            $procedure['doktor_ad'],
-            $procedure['islem_tarihi'],
-            $procedure['ucret']
-        );
-        
-        if (!$stmt->execute()) {
-            $success = false;
-            $errorMessage = $stmt->error;
-            break;
+    foreach ($proceduresByUser as $userId => $userProcedures) {
+        $currentDate = date('Y-m-d H:i:s');
+
+        // islem tablosuna ekle
+        $islemStmt = $conn->prepare("INSERT INTO islem (user_id, islem_tarihi) VALUES (?, ?)");
+        if (!$islemStmt) throw new Exception("İşlem prepare hatası: " . $conn->error);
+
+        $islemStmt->bind_param("ss", $userId, $currentDate);
+        if (!$islemStmt->execute()) throw new Exception("İşlem insert hatası: " . $islemStmt->error);
+
+        $islemId = $conn->insert_id;
+        $islemStmt->close();
+
+        // yapilan_islem tablosuna işlemleri ekle
+        $stmt = $conn->prepare("INSERT INTO yapilan_islem (islem_id, user_id, dis_id, yapilan_islem, doktor_ad, islem_tarihi, ucret)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)");
+        if (!$stmt) throw new Exception("yapilan_islem prepare hatası: " . $conn->error);
+
+        foreach ($userProcedures as $procedure) {
+            $stmt->bind_param(
+                "isssssd",
+                $islemId,
+                $procedure['user_id'],
+                $procedure['dis_id'],
+                $procedure['yapilan_islem'],
+                $procedure['doktor_ad'],
+                $procedure['islem_tarihi'],
+                $procedure['ucret']
+            );
+
+            if (!$stmt->execute()) {
+                throw new Exception("Yapılan işlem insert hatası: " . $stmt->error);
+            }
         }
+
+        $stmt->close();
     }
-    
-    if ($success) {
-        // If all inserts were successful, commit transaction
-        $conn->commit();
-        echo json_encode([
-            'success' => true,
-            'message' => 'All procedures saved successfully',
-            'islem_id' => $islemId
-        ]);
-    } else {
-        // If any insert failed, rollback the transaction
-        $conn->rollback();
-        echo json_encode([
-            'success' => false,
-            'message' => 'Error saving procedures: ' . $errorMessage
-        ]);
-    }
-    
-    $stmt->close();
-    
+
+    $conn->commit();
+    echo json_encode([
+        'success' => true,
+        'message' => 'Tüm işlemler başarıyla kaydedildi.'
+    ]);
+
 } catch (Exception $e) {
-    // If an exception occurred, rollback the transaction
     $conn->rollback();
     echo json_encode([
         'success' => false,
-        'message' => 'Exception: ' . $e->getMessage()
+        'message' => 'Hata: ' . $e->getMessage()
     ]);
 }
 
 $conn->close();
-?>
