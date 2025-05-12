@@ -1,3 +1,80 @@
+<?php
+// Bağlantı dosyasını dahil et
+
+// Bağlantı ayarları
+$host = "localhost"; 
+$dbname = "dental_db"; 
+$user = "root"; 
+$pass = ""; 
+
+try {
+    // PDO bağlantısı oluşturuluyor
+    $pdo = new PDO("mysql:host=$host;dbname=$dbname", $user, $pass);
+    // PDO hata modu ayarlanıyor
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    // Hata oluşursa, hata mesajını döndür
+    echo "Connection failed: " . $e->getMessage();
+    die();
+}
+
+
+
+// Veritabanı bağlantısını doğru şekilde aldığınızı varsayıyoruz
+// Artık tekrar PDO bağlantısını yapmanıza gerek yok.
+
+// URL üzerinden gelen kullanıcı ID'sini al
+$userId = isset($_GET['user_id']) ? $_GET['user_id'] : null; // Eğer yoksa null döner
+
+// Eğer user_id parametresi gelmediyse, hata mesajı göster
+if ($userId === null) {
+    echo "No user ID provided.";
+    exit; // Kodun geri kalanı çalışmasın
+}
+
+try {
+    // PDO sorgusu ile verileri alıyoruz
+    $stmt = $pdo->prepare("SELECT * FROM yapilan_islem WHERE user_id = :user_id");
+    $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+    $stmt->execute();
+
+    // Verileri çek
+    $procedures = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Eğer veriler bulunamazsa
+    // if (empty($procedures)) {
+    //     echo "No procedures found for this user.";
+    // } else {
+    //     // Verileri tablo olarak ekrana yazdır
+    //     echo "<table border='1'>";
+    //     echo "<tr><th>ID</th><th>Treatment</th><th>Doctor</th><th>Date</th><th>Cost</th></tr>";
+
+    //     foreach ($procedures as $procedure) {
+    //         echo "<tr>";
+    //         echo "<td>" . $procedure['id'] . "</td>";
+    //         echo "<td>" . $procedure['yapilan_islem'] . "</td>";
+    //         echo "<td>" . $procedure['doktor_ad'] . "</td>";
+    //         echo "<td>" . $procedure['islem_tarihi'] . "</td>";
+    //         echo "<td>" . $procedure['ucret'] . "</td>";
+    //         echo "</tr>";
+    //     }
+
+    //     echo "</table>";
+    // }
+} catch (PDOException $e) {
+    // Eğer hata oluşursa, hata mesajını ekrana yazdır
+    echo "Error: " . $e->getMessage();
+}
+
+$user_id = $_GET['user_id']; // veya session'dan da alabilirsin
+
+// Kullanıcının bilgilerini alıyoruz
+$stmt = $pdo->prepare("SELECT name, image FROM users WHERE id = :user_id");
+$stmt->execute(['user_id' => $user_id]);
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
+?>
+
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -6,6 +83,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Document</title>
   <style>
+
+    body{
+         background-image: url('../image/arka_plan.png');
+
+    }
     svg {
       border: 1px solid #ccc;
     }
@@ -20,7 +102,7 @@
 
 <body>
 
->
+
   <div class="header-container">
     <h2>Diş Haritası</h2>
     <p class="instructions">Lütfen işlem yapılacak dişi seçiniz.</p>
@@ -284,7 +366,8 @@
     class="input-popup"
     rows="3"
     cols="20"
-    placeholder="Not girin..."></textarea>
+    placeholder="Not girin...">
+  </textarea>
   <div class="procedures-container">
     <h3>Yapılan İşlemler Listesi</h3>
     <div class="procedures-list" id="proceduresList">
@@ -296,100 +379,116 @@
   <!-- Tabloyu gösterecek HTML yapısı -->
   <div class="patient-records-container">
     <h3>Geçmiş İşlem Kayıtları</h3>
+<?php if ($user): ?>
+    <div style="display: flex; align-items: center; margin-bottom: 20px;">
+        <img src="../uploaded_files/<?= htmlspecialchars($user['image']); ?>" class="image" style="width: 120px; border-radius: 10px;">
 
-    <div class="patient-info">
-      <div class="patient-photo">
-        <img src="https://via.placeholder.com/80" alt="Hasta Fotoğrafı" />
-      </div>
-      <div class="patient-details">
-        <h4>Ahmet Doğan</h4>
-        <p>Hasta No: <strong>HD12345</strong></p>
-        <p>T.C. Kimlik: <strong>*****12345</strong></p>
-        <p>Doğum Tarihi: <strong>15.05.1980</strong></p>
-      </div>
+        <h3><?php echo htmlspecialchars($user['name']); ?></h3>
     </div>
+<?php else: ?>
+    <p>Hasta bilgisi bulunamadı.</p>
+<?php endif; ?>
 
     <div class="table-container">
-      <table class="records-table">
-        <thead>
-          <tr>
-            <th>İşlem Tarihi</th>
-            <th>Diş No</th>
+      <!-- Tabloyu oluşturuyoruz -->
+<table border="1">
+    <thead>
+        <tr>
+            <th>İşlem ID</th>
+            <th>Diş ID</th>
             <th>Yapılan İşlem</th>
-            <th>Doktor</th>
+            <th>Doktor Adı</th>
+            <th>İşlem Tarihi</th>
             <th>Ücret</th>
-            <th>İşlemler</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>05.02.2023</td>
-            <td>12, 15</td>
-            <td>Kanal Tedavisi, Dolgu</td>
-            <td>Dr. Mehmet Yılmaz</td>
-            <td>2,500 ₺</td>
-            <td>
-              <a href="detay1.html" class="action-button">Detay</a>
-            </td>
-          </tr>
-          <tr>
-            <td>18.09.2022</td>
-            <td>24</td>
-            <td>Diş Taşı Temizliği</td>
-            <td>Dr. Ayşe Kaya</td>
-            <td>750 ₺</td>
-            <td>
-              <a href="detay2.html
-                " class="action-button">Detay</a>
-            </td>
-          </tr>
-          <tr>
-            <td>23.05.2022</td>
-            <td>31, 32, 33</td>
-            <td>Röntgen, Kontrol</td>
-            <td>Dr. Mehmet Yılmaz</td>
-            <td>350 ₺</td>
-            <td>
-              <a href="detay3.html" class="action-button">Detay</a>
-            </td>
-          </tr>
-          <tr>
-            <td>11.01.2022</td>
-            <td>16</td>
-            <td>Çekim</td>
-            <td>Dr. Ayşe Kaya</td>
-            <td>800 ₺</td>
-            <td>
-              <a href="detay4.html" class="action-button">Detay</a>
-            </td>
-          </tr>
-          <tr>
-            <td>04.11.2021</td>
-            <td>45, 46</td>
-            <td>Dolgu, Tedavi</td>
-            <td>Dr. Ali Demir</td>
-            <td>1,200 ₺</td>
-            <td>
-              <a href="detay5.html" class="action-button">Detay</a>
-            </td>
-          </tr>
-          <tr>
-            <td>22.07.2021</td>
-            <td>21, 22</td>
-            <td>Estetik Kaplama</td>
-            <td>Dr. Mehmet Yılmaz</td>
-            <td>3,500 ₺</td>
-            <td>
-              <a href="detay6.html" class="action-button">Detay</a>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        </tr>
+    </thead>
+    <tbody>
+        <?php
+        // Verileri tabloya yazdırıyoruz
+        if ($procedures) {
+            foreach ($procedures as $procedure) {
+                echo "<tr>";
+                echo "<td>" . $procedure['islem_id'] . "</td>";
+                echo "<td>" . $procedure['dis_id'] . "</td>";
+                echo "<td>" . $procedure['yapilan_islem'] . "</td>";
+                echo "<td>" . $procedure['doktor_ad'] . "</td>";
+                echo "<td>" . $procedure['islem_tarihi'] . "</td>";
+                echo "<td>" . $procedure['ucret'] . "</td>";
+                echo "</tr>";
+            }
+        } else {
+            echo "<tr><td colspan='6'>Veri bulunamadı.</td></tr>";
+        }
+        ?>
+    </tbody>
+</table>
     </div>
   </div>
 
   <!-- Tablo için CSS stilleri -->
   <style>
+    table {
+    width: 90%;
+    margin: 30px auto;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+    overflow: hidden;
+    font-size: 14px;
+}
+
+/* Tablo başlığı */
+th {
+    background-color: #007BFF;
+    color: white;
+    padding: 10px 12px;
+    text-align: center;
+    border-bottom: 2px solid #0056b3;
+    font-size: 15px;
+}
+
+/* Hücreler */
+td {
+    padding: 10px 12px;
+    text-align: center;
+    border-bottom: 1.5px solid #cce0ff;
+    color: #333;
+}
+
+/* Hover efekti */
+tr:hover {
+    background-color: #eaf3ff;
+}
+
+/* Alternatif satırlar */
+tr:nth-child(even) {
+    background-color: #f7faff;
+}
+
+/* Border radius etkisi için sadece üst ve alt satır köşeleri */
+table thead tr:first-child th:first-child {
+    border-top-left-radius: 10px;
+}
+table thead tr:first-child th:last-child {
+    border-top-right-radius: 10px;
+}
+table tbody tr:last-child td:first-child {
+    border-bottom-left-radius: 10px;
+}
+table tbody tr:last-child td:last-child {
+    border-bottom-right-radius: 10px;
+}
+
+/* Veri bulunamadı */
+td[colspan="6"] {
+    color: #dc3545;
+    font-weight: bold;
+    font-size: 1.05em;
+    background-color: #fff5f5;
+}
+
     .patient-records-container {
       margin-top: 40px;
       padding: 20px;
@@ -1004,6 +1103,46 @@
       transform: translateY(-2px);
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
+    
+   svg{
+     background-size: cover;
+    margin-left: 38rem;
+    border: none;
+
+   }
+
+   /* Butonun genel stili */
+.save-database-button {
+    background-color: #0055aa; /* Yeşil arka plan */
+    color: white;              /* Beyaz yazı rengi */
+    border: none;              /* Kenarlık yok */
+    padding: 15px 32px;        /* Dikey ve yatay padding */
+    text-align: center;        /* Yazıyı ortala */
+    text-decoration: none;     /* Alt çizgi yok */
+    display: inline-block;     /* Butonun satır içinde görünmesini sağla */
+    font-size: 16px;           /* Yazı boyutu */
+    border-radius: 8px;        /* Yuvarlatılmış köşeler */
+    transition: all 0.3s ease; /* Geçiş efekti */
+    cursor: pointer;          /* Tıklanabilir işaretçi */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Hafif gölge efekti */
+}
+
+/* Hover efekti: butona üzerine gelindiğinde */
+.save-database-button:hover {
+    background-color: #0055aa; /* Hoverda daha koyu yeşil */
+    transform: translateY(-2px); /* Butonu yukarıya kaydır */
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2); /* Hoverda daha belirgin gölge */
+}
+
+/* Focus ve aktif durumlar için: */
+.save-database-button:focus,
+.save-database-button:active {
+    outline: none; /* Dış çerçeveyi kaldır */
+    background-color: #0055aa; /* Tıklanmış durumda daha koyu yeşil */
+}
+
+
+
   </style>
   <script>
     // JavaScript kodunu listeleme bölümüne buton ekleyecek ve kayıt işlemini gerçekleştirecek şekilde düzenleyelim
@@ -1024,6 +1163,8 @@
         // Butona tıklama olayı ekle
         saveDbButton.addEventListener("click", saveProceduresToDatabase);
       }
+
+      
 
       // Veritabanına kaydetme fonksiyonu
       function saveProceduresToDatabase() {
